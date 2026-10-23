@@ -4,14 +4,14 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-
+const axios = require('axios');
 const { HoldingsModel } = require('./model/HoldingsModel');
 
 const { PositionsModel } = require('./model/PositionsModel');
 const { OrdersModel } = require('./model/OrdersModel');
 
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
+
 const jwt = require('jsonwebtoken');
 const { UserModel } = require('./model/UserModel');
 const app = express();
@@ -288,14 +288,6 @@ app.get('/allOrders', async (req, res) => {
 
 //++++++++++++++++++++++++++++++++++
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
 const hashOTP = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
 
 async function sendOTP(user, purpose) {
@@ -304,26 +296,55 @@ async function sendOTP(user, purpose) {
   user.otpHash = hashOTP(otp);
   user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
   user.otpPurpose = purpose;
+
   await user.save();
 
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: user.email,
-      subject: 'Zerodha Stock Trading Platform - Email Verification Code',
-      text: `Hello ${user.name},
+    if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL) {
+      throw new Error('BREVO_API_KEY or BREVO_SENDER_EMAIL is missing');
+    }
+
+    const response = await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      {
+        sender: {
+          name: process.env.BREVO_SENDER_NAME || 'TradeX',
+          email: process.env.BREVO_SENDER_EMAIL,
+        },
+        to: [
+          {
+            email: user.email,
+            name: user.name,
+          },
+        ],
+        subject: 'TradeX - Email Verification Code',
+        textContent: `Hello ${user.name},
 
 Your verification code is ${otp}.
 
 This code expires in 5 minutes. Do not share it with anyone.
 
 If you did not request this code, you can ignore this email.`,
-    });
+      },
+      {
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 15000,
+      },
+    );
+
+    console.log('Brevo email accepted:', response.status);
   } catch (error) {
     user.otpHash = null;
     user.otpExpiresAt = null;
     user.otpPurpose = null;
     await user.save();
+
+    console.error('Brevo email error:', error.response?.data || error.message);
+
     throw error;
   }
 }
