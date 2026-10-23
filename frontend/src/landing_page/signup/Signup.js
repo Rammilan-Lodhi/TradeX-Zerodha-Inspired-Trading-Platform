@@ -1,145 +1,321 @@
-import React, { useState } from "react";
-
+import React, { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { BACKEND_URL, DASHBOARD_URL } from '../../config';
 function Signup() {
-  const [mobile, setMobile] = useState("");
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [mode, setMode] = useState(
+    location.pathname === '/login' ? 'login' : 'signup',
+  );
   const [step, setStep] = useState(1);
-  const [otp, setOtp] = useState("");
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleContinue = (e) => {
+  const switchMode = (nextMode) => {
+    setMode(nextMode);
+    setStep(1);
+    setOtp('');
+    setMessage('');
+    navigate(nextMode === 'login' ? '/login' : '/signup');
+  };
+
+  async function requestOTP(e) {
     e.preventDefault();
+    setMessage('');
 
-    if (mobile.length !== 10) {
-      alert("Please enter a valid 10-digit mobile number");
+    if (mode === 'signup' && !name.trim()) {
+      setMessage('Please enter your full name.');
       return;
     }
 
-    setStep(2);
-  };
-
-  const handleVerify = (e) => {
-    e.preventDefault();
-
-    if (otp.length !== 6) {
-      alert("Please enter a valid 6-digit OTP");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setMessage('Please enter a valid email address.');
       return;
     }
 
-    alert("Mobile number verified!");
-  };
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/auth/${mode}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data.message || 'Unable to send OTP.');
+        return;
+      }
+
+      setStep(2);
+      setOtp('');
+      setMessage(data.message);
+    } catch (error) {
+      setMessage(
+        'Cannot connect to server. Make sure backend is running on port 3002.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function verifyOTP(e) {
+    e.preventDefault();
+    setMessage('');
+
+    if (!/^\d{6}$/.test(otp)) {
+      setMessage('Enter the complete 6-digit OTP.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/auth/verify-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          otp,
+          purpose: mode,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data.message || 'OTP verification failed.');
+        return;
+      }
+
+      // Pass token to the separate dashboard origin using URL fragment.
+      // Dashboard will consume the token and remove it from the URL.
+      window.location.replace(
+        `${data.dashboardUrl || DASHBOARD_URL}/#token=${encodeURIComponent(data.token)}`,
+      );
+    } catch (error) {
+      setMessage('Unable to verify OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div className="signup-page">
-      <div className="signup-card">
+    <div
+      className='signup-page'
+      style={{
+        minHeight: '75vh',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '30px 16px',
+      }}
+    >
+      <div
+        className='signup-card'
+        style={{
+          width: '100%',
+          maxWidth: '430px',
+          padding: '32px',
+          border: '1px solid #e5e5e5',
+          borderRadius: '12px',
+          background: '#fff',
+        }}
+      >
+        <h2 style={{ color: '#387ed1', textAlign: 'center' }}>zerodha</h2>
 
-        <div className="signup-logo">
-          <h2>zerodha</h2>
-        </div>
+        <h3 style={{ textAlign: 'center', marginTop: '24px' }}>
+          {step === 2
+            ? 'Verify your email'
+            : mode === 'signup'
+              ? 'Create your account'
+              : 'Login to your account'}
+        </h3>
+
+        <p style={{ color: '#666', textAlign: 'center' }}>
+          {step === 2
+            ? `Enter the 6-digit code sent to ${email}`
+            : mode === 'signup'
+              ? 'Enter your name and email to get started.'
+              : 'Enter your registered email to receive a login code.'}
+        </p>
+
+        {message && (
+          <p
+            role='status'
+            aria-live='polite'
+            style={{
+              padding: '10px',
+              background: '#f5f7fa',
+              borderRadius: '6px',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {message}
+          </p>
+        )}
 
         {step === 1 && (
-          <>
-            <h1>Open a Zerodha account</h1>
-
-            <p className="signup-subtitle">
-              Modern platforms and apps, ₹0 investments, and flat ₹20
-              intraday and F&O trades.
-            </p>
-
-            <form onSubmit={handleContinue}>
-              <label htmlFor="mobile">Mobile number</label>
-
-              <div className="mobile-input">
-                <span>+91</span>
-
+          <form onSubmit={requestOTP}>
+            {mode === 'signup' && (
+              <div style={{ marginBottom: '18px' }}>
+                <label htmlFor='name'>Full name</label>
                 <input
-                  type="tel"
-                  id="mobile"
-                  placeholder="Enter your mobile number"
-                  value={mobile}
-                  onChange={(e) =>
-                    setMobile(e.target.value.replace(/\D/g, ""))
-                  }
-                  maxLength="10"
+                  id='name'
+                  type='text'
+                  autoComplete='name'
+                  placeholder='Enter your full name'
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={100}
+                  required
+                  style={inputStyle}
                 />
               </div>
+            )}
 
-              <button type="submit" className="signup-btn">
-                Continue
-              </button>
-            </form>
-
-            <p className="signup-terms">
-              By continuing, you agree to the Terms & Conditions and
-              Privacy Policy.
-            </p>
-
-            <div className="signup-divider">
-              <span>OR</span>
+            <div style={{ marginBottom: '18px' }}>
+              <label htmlFor='email'>Email address</label>
+              <input
+                id='email'
+                type='email'
+                autoComplete='email'
+                placeholder='Enter your email'
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                style={inputStyle}
+              />
             </div>
 
-            <button className="google-btn" type="button">
-              Continue with Google
+            <button type='submit' disabled={loading} style={buttonStyle}>
+              {loading
+                ? 'Please wait...'
+                : mode === 'signup'
+                  ? 'Send verification code'
+                  : 'Send login code'}
             </button>
-
-            <p className="login-text">
-              Already have an account?{" "}
-              <a href="/login">Login</a>
-            </p>
-          </>
+          </form>
         )}
 
         {step === 2 && (
-          <>
-            <h1>Verify your mobile number</h1>
-
-            <p className="signup-subtitle">
-              Enter the 6-digit OTP sent to
-              <br />
-              +91 {mobile}
-            </p>
-
-            <form onSubmit={handleVerify}>
-              <label htmlFor="otp">Enter OTP</label>
-
+          <form onSubmit={verifyOTP}>
+            <div style={{ marginBottom: '18px' }}>
+              <label htmlFor='otp'>6-digit verification code</label>
               <input
-                type="text"
-                id="otp"
-                className="otp-input"
-                placeholder="Enter 6-digit OTP"
+                id='otp'
+                type='text'
+                inputMode='numeric'
+                autoComplete='one-time-code'
+                placeholder='Enter OTP'
                 value={otp}
                 onChange={(e) =>
-                  setOtp(e.target.value.replace(/\D/g, ""))
+                  setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))
                 }
-                maxLength="6"
+                maxLength={6}
+                required
+                style={inputStyle}
               />
+            </div>
 
-              <button type="submit" className="signup-btn">
-                Verify & Continue
-              </button>
-            </form>
-
-            <button
-              type="button"
-              className="back-btn"
-              onClick={() => {
-                setStep(1);
-                setOtp("");
-              }}
-            >
-              Change mobile number
+            <button type='submit' disabled={loading} style={buttonStyle}>
+              {loading ? 'Verifying...' : 'Verify & Continue'}
             </button>
 
-            <p className="resend-text">
-              Didn't receive the OTP?{" "}
-              <button type="button" className="resend-btn">
-                Resend OTP
-              </button>
-            </p>
-          </>
+            <button
+              type='button'
+              disabled={loading}
+              onClick={() => {
+                setStep(1);
+                setOtp('');
+                setMessage('');
+              }}
+              style={{
+                ...buttonStyle,
+                background: '#fff',
+                color: '#387ed1',
+                border: '1px solid #387ed1',
+                marginTop: '10px',
+              }}
+            >
+              Back
+            </button>
+
+            <button
+              type='button'
+              disabled={loading}
+              onClick={requestOTP}
+              style={{
+                display: 'block',
+                margin: '16px auto 0',
+                border: 'none',
+                background: 'none',
+                color: '#387ed1',
+                cursor: 'pointer',
+              }}
+            >
+              Resend code
+            </button>
+          </form>
         )}
 
+        <hr style={{ margin: '24px 0' }} />
+
+        <p style={{ textAlign: 'center' }}>
+          {mode === 'signup'
+            ? 'Already have an account?'
+            : 'New to Zerodha Clone?'}{' '}
+          <button
+            type='button'
+            onClick={() => switchMode(mode === 'signup' ? 'login' : 'signup')}
+            style={{
+              border: 'none',
+              background: 'none',
+              color: '#387ed1',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            {mode === 'signup' ? 'Login' : 'Sign up'}
+          </button>
+        </p>
       </div>
     </div>
   );
 }
+
+const inputStyle = {
+  display: 'block',
+  width: '100%',
+  padding: '12px',
+  marginTop: '8px',
+  border: '1px solid #ccc',
+  borderRadius: '5px',
+  boxSizing: 'border-box',
+};
+
+const buttonStyle = {
+  display: 'block',
+  width: '100%',
+  padding: '12px',
+  border: 'none',
+  borderRadius: '5px',
+  background: '#387ed1',
+  color: '#fff',
+  cursor: 'pointer',
+};
 
 export default Signup;
