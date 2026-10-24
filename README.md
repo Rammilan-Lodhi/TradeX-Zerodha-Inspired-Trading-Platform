@@ -2,6 +2,10 @@
 
 A full-stack Zerodha-inspired web application developed as a major project. This project demonstrates a modern trading platform interface with separate frontend, dashboard, and backend applications, along with user authentication, email verification, and database integration.
 
+## 🚀 TradeX – Live Demo
+
+**Live Website:** [TradeX – Zerodha Clone](https://tradex-frontend-vmck.onrender.com/)
+
 ## Project Overview
 
 The application is organized into three main parts:
